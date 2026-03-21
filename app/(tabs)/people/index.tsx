@@ -1,14 +1,18 @@
-import { Button, Card, EmptyState, Input, colors, radius, spacing, typography } from "@/src/components/ui";
+import { Badge, Card, EmptyState, colors, radius, spacing, typography } from "@/src/components/ui";
 import { useAuth } from "@/src/context/AuthContext";
-import { usePeople } from "@/src/hooks/usePeople";
-import type { Message } from "@/src/types";
+import { getOtherRoomMember, getPresenceForUser, usePeople, usePresence } from "@/src/hooks/usePeople";
+import type { ChatRoom } from "@/src/types";
 import { Ionicons } from "@expo/vector-icons";
-import { Stack } from "expo-router";
-import React, { useEffect, useState } from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import { Stack, useRouter } from "expo-router";
+import React, { useMemo } from "react";
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 
-function MessageCard({ item }: { item: Message }) {
-  const dateLabel = new Date(item.createdAt).toLocaleString("en-AU", {
+function RoomCard({ room, currentUserId }: { room: ChatRoom; currentUserId?: string }) {
+  const router = useRouter();
+  const otherMember = getOtherRoomMember(room, currentUserId);
+  const { data: presence } = usePresence(otherMember ? [otherMember.id] : []);
+  const otherPresence = getPresenceForUser(presence, otherMember);
+  const dateLabel = new Date(room.lastMessage?.createdAt ?? room.updatedAt).toLocaleString("en-AU", {
     day: "numeric",
     month: "short",
     hour: "numeric",
@@ -16,64 +20,83 @@ function MessageCard({ item }: { item: Message }) {
   });
 
   return (
-    <Card>
-      <View style={styles.messageHeader}>
+    <Card onPress={() => router.push({ pathname: "/people/[roomId]", params: { roomId: room.id } })}>
+      <View style={styles.roomHeader}>
         <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{item.authorName.charAt(0)}</Text>
+          <Text style={styles.avatarText}>{room.displayName.charAt(0)}</Text>
         </View>
-        <View style={styles.messageMeta}>
-          <Text style={styles.author}>{item.authorName}</Text>
+        <View style={styles.roomMeta}>
+          <View style={styles.roomMetaTop}>
+            <Text style={styles.author} numberOfLines={1}>
+              {room.displayName}
+            </Text>
+            {room.type === "DIRECT" && otherPresence?.status === "ONLINE" ? <Badge label="Online" variant="success" /> : null}
+          </View>
+          <Text style={styles.preview} numberOfLines={1}>
+            {room.lastMessage?.content ?? (room.type === "GROUP" ? "Group room" : "Direct conversation")}
+          </Text>
+        </View>
+        <View style={styles.roomRight}>
           <Text style={styles.time}>{dateLabel}</Text>
+          {room.unreadCount > 0 ? (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadText}>{room.unreadCount}</Text>
+            </View>
+          ) : null}
         </View>
       </View>
-      <Text style={styles.content}>{item.content}</Text>
     </Card>
   );
 }
 
 export default function PeopleScreen() {
   const { user } = useAuth();
-  const { messages, isLoading, isSending, loadMessages, sendMessage } = usePeople();
-  const [draft, setDraft] = useState("");
-
-  useEffect(() => {
-    void loadMessages();
-  }, [loadMessages]);
-
-  const handleSend = async () => {
-    if (!draft.trim() || !user) return;
-    await sendMessage(draft.trim(), user);
-    setDraft("");
-  };
+  const router = useRouter();
+  const { data: rooms, isLoading, refetch } = usePeople();
+  const directMemberIds = useMemo(
+    () =>
+      (rooms ?? [])
+        .filter((room) => room.type === "DIRECT")
+        .map((room) => getOtherRoomMember(room, user?.id)?.id)
+        .filter(Boolean) as string[],
+    [rooms, user?.id],
+  );
+  usePresence(directMemberIds);
 
   return (
     <>
-      <Stack.Screen options={{ title: "People", headerLargeTitle: true }} />
+      <Stack.Screen
+        options={{
+          title: "People",
+          headerLargeTitle: true,
+          headerRight: () => (
+            <Pressable onPress={() => router.push("/people/new")} hitSlop={8}>
+              <Ionicons name="add" size={26} color={colors.primaryLight} />
+            </Pressable>
+          ),
+        }}
+      />
       <View style={styles.screen}>
         <FlatList
-          data={messages}
+          data={rooms}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <MessageCard item={item} />}
+          renderItem={({ item }) => <RoomCard room={item} currentUserId={user?.id} />}
           contentInsetAdjustmentBehavior="automatic"
           automaticallyAdjustContentInsets
           automaticallyAdjustsScrollIndicatorInsets
+          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor={colors.primaryLight} />}
           ListHeaderComponent={
             <View style={styles.headerWrap}>
               <View style={styles.infoBanner}>
                 <Ionicons name="chatbubbles-outline" size={20} color={colors.primaryLight} />
-                <Text style={styles.infoText}>Crew board for quick updates. This is wired to a mock adapter until messaging endpoints are available.</Text>
+                <Text style={styles.infoText}>Room list is loaded from chat APIs and updated live through the socket connection.</Text>
               </View>
             </View>
           }
-          ListEmptyComponent={!isLoading ? <EmptyState icon="chatbox-ellipses-outline" title="No updates yet" description="Post the first message to start the board." /> : null}
+          ListEmptyComponent={!isLoading ? <EmptyState icon="chatbox-ellipses-outline" title="No conversations yet" description="Rooms you are part of will appear here." /> : null}
           ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
           contentContainerStyle={styles.list}
         />
-
-        <View style={styles.composer}>
-          <Input label="Post Update" value={draft} onChangeText={setDraft} placeholder="Share a maintenance update or handover note" multiline />
-          <Button label="Post" onPress={handleSend} loading={isSending} disabled={!draft.trim() || !user} />
-        </View>
       </View>
     </>
   );
@@ -105,10 +128,9 @@ const styles = StyleSheet.create({
     color: colors.primary,
     flex: 1,
   },
-  messageHeader: {
+  roomHeader: {
     flexDirection: "row",
-    alignItems: "center",
-    marginBottom: spacing.sm,
+    alignItems: "flex-start",
   },
   avatar: {
     width: 34,
@@ -124,32 +146,46 @@ const styles = StyleSheet.create({
     color: colors.primaryLight,
     fontWeight: "700",
   },
-  messageMeta: {
+  roomMeta: {
     flex: 1,
+    marginRight: spacing.sm,
+  },
+  roomMetaTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: 2,
   },
   author: {
     ...typography.body,
     fontWeight: "600",
     color: colors.text,
+    flex: 1,
+  },
+  preview: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
+  roomRight: {
+    alignItems: "flex-end",
+    gap: spacing.xs,
   },
   time: {
     ...typography.caption,
     color: colors.textMuted,
   },
-  content: {
-    ...typography.body,
-    color: colors.text,
+  unreadBadge: {
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: spacing.xs,
+    borderRadius: radius.full,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  composer: {
-    position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.lg,
-    gap: spacing.sm,
-    backgroundColor: colors.bgCard,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
+  unreadText: {
+    ...typography.caption,
+    color: colors.textInverse,
+    fontWeight: "700",
   },
 });

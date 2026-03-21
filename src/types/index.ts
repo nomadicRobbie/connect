@@ -54,6 +54,7 @@ export interface RegisterRequest {
   name: string;
   email: string;
   password: string;
+  role: Role;
 }
 
 export interface AuthResponse {
@@ -79,13 +80,139 @@ export interface MaintenanceFormData {
   assignedToId?: string;
 }
 
-// People / messaging — local mock; swap implementation when backend is ready
-export interface Message {
+export type ChatRoomType = "GROUP" | "DIRECT";
+export type ChatRoomMemberRole = "OWNER" | "MEMBER";
+export type ChatMessageType = "TEXT";
+export type PresenceStatus = "ONLINE" | "OFFLINE";
+
+export interface ChatMessage {
   id: string;
-  authorId: string;
-  authorName: string;
+  roomId: string;
+  senderId: string;
+  type: ChatMessageType;
   content: string;
+  isDeleted: boolean;
+  deletedAt?: string | null;
   createdAt: string;
+  updatedAt: string;
+  sender: User;
+}
+
+export interface ChatRoomMember {
+  userId: string;
+  role: ChatRoomMemberRole;
+  joinedAt: string;
+  lastReadAt: string;
+  user: User;
+}
+
+export interface ChatRoom {
+  id: string;
+  name: string;
+  type: ChatRoomType;
+  createdAt: string;
+  updatedAt: string;
+  createdById: string;
+  displayName: string;
+  memberCount: number;
+  members: ChatRoomMember[];
+  lastMessage?: ChatMessage | null;
+  unreadCount: number;
+}
+
+export interface Presence {
+  userId: string;
+  status: PresenceStatus;
+  lastSeen: string;
+  updatedAt: string;
+}
+
+export interface ChatMessagesResponse {
+  data: ChatMessage[];
+  pageInfo: {
+    hasMore: boolean;
+    nextCursor?: string | null;
+    limit: number;
+  };
+}
+
+export interface ChatReadState {
+  roomId: string;
+  userId: string;
+  lastReadAt: string;
+}
+
+export interface DirectRoomResponse {
+  room: Pick<ChatRoom, "id">;
+  created: boolean;
+}
+
+export interface AckSuccess<T> {
+  ok: true;
+  data: T;
+}
+
+export interface AckFailure {
+  ok: false;
+  error: string;
+  status?: number;
+}
+
+export type SocketAck<T> = AckSuccess<T> | AckFailure;
+
+export interface SocketReadyPayload {
+  userId: string;
+  roomIds: string[];
+}
+
+export interface SocketErrorPayload {
+  ok: false;
+  error: string;
+  status?: number;
+}
+
+export interface AssetDeletedPayload {
+  id: string;
+}
+
+export interface MaintenanceDeletedPayload {
+  id: string;
+  assetId: string;
+}
+
+export interface ChatRoomRemovedPayload {
+  roomId: string;
+  userId: string;
+}
+
+export interface ChatMessageCreatedPayload {
+  roomId: string;
+  message: {
+    id: string;
+  };
+}
+
+export interface ChatRoomJoinPayload {
+  roomId: string;
+}
+
+export interface ChatRoomLeavePayload {
+  roomId: string;
+}
+
+export interface ChatSendMessagePayload {
+  roomId?: string;
+  recipientId?: string;
+  content: string;
+  type?: ChatMessageType;
+}
+
+export interface ChatSendMessageResult {
+  roomId: string;
+  roomCreated: boolean;
+  message: {
+    id: string;
+  };
 }
 
 export interface ApiError {

@@ -31,7 +31,12 @@ export default function RegisterScreen() {
     if (!validate()) return;
     setLoading(true);
     try {
-      await register({ name: name.trim(), email: email.trim().toLowerCase(), password });
+      await register({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password,
+        role: "TECHNICIAN",
+      });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Registration failed";
       Alert.alert("Registration Failed", message);
