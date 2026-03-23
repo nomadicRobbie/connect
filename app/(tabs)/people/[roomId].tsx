@@ -4,8 +4,8 @@ import { useAuth } from "@/src/context/AuthContext";
 import { getOtherRoomMember, getPresenceForUser, useChatRoom, useMarkRoomRead, usePresence, useRoomMessages, useSendChatMessage } from "@/src/hooks/usePeople";
 import type { ChatMessage } from "@/src/types";
 import { Ionicons } from "@expo/vector-icons";
-import { Stack, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 function MessageBubble({ message, currentUserId }: { message: ChatMessage; currentUserId?: string }) {
@@ -28,12 +28,15 @@ function MessageBubble({ message, currentUserId }: { message: ChatMessage; curre
 
 export default function RoomScreen() {
   const { user } = useAuth();
+  const router = useRouter();
   const { roomId } = useLocalSearchParams<{ roomId: string }>();
   const { data: room, isLoading: roomLoading } = useChatRoom(roomId!);
-  const { data, isLoading: messagesLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useRoomMessages(roomId!);
+  const canLoadMessages = !!room && !roomLoading;
+  const { data, isLoading: messagesLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useRoomMessages(roomId!, canLoadMessages);
   const { mutateAsync: sendMessage, isPending: sending } = useSendChatMessage();
   const { mutateAsync: markRead } = useMarkRoomRead();
   const [draft, setDraft] = useState("");
+  const markedRoomRef = useRef<string | null>(null);
 
   const messages = useMemo(() => sortMessagesChronologically((data?.pages ?? []).flatMap((page) => page.data)), [data]);
 
@@ -42,9 +45,11 @@ export default function RoomScreen() {
   const otherPresence = getPresenceForUser(presence, otherMember);
 
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId || !room) return;
+    if (markedRoomRef.current === roomId) return;
+    markedRoomRef.current = roomId;
     void markRead(roomId).catch(() => undefined);
-  }, [markRead, roomId]);
+  }, [markRead, roomId, room?.id]);
 
   const handleSend = async () => {
     if (!draft.trim()) return;
@@ -67,6 +72,11 @@ export default function RoomScreen() {
         options={{
           title: room?.displayName ?? "Conversation",
           headerBackTitle: "People",
+          headerLeft: () => (
+            <Pressable onPress={() => router.replace("/(tabs)/people")}>
+              <Ionicons name="chevron-back" size={24} color={colors.primaryLight} />
+            </Pressable>
+          ),
           headerRight: () =>
             otherMember && otherPresence?.status === "ONLINE" ? (
               <View style={styles.headerPresence}>

@@ -48,7 +48,7 @@ export default function NewAssetScreen() {
         location: form.location?.trim() || undefined,
         description: form.description?.trim() || undefined,
       });
-      router.replace({ pathname: "/assets/[id]", params: { id: created.id } });
+      router.replace({ pathname: "/equipment/[id]", params: { id: created.id } });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to create asset";
       Alert.alert("Error", message);

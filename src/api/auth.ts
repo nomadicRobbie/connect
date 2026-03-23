@@ -6,5 +6,7 @@ export const authApi = {
 
   register: (data: RegisterRequest) => apiClient.post<AuthResponse>("/auth/register", data).then((r) => r.data),
 
+  getUsers: () => apiClient.get<User[]>("/auth/users").then((r) => r.data),
+
   me: () => apiClient.get<User>("/auth/me").then((r) => r.data),
 };

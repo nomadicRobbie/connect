@@ -28,7 +28,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (token) {
           const me = await authApi.me();
           setUser(me);
-          socketManager.connect(token);
+          socketManager.connect(token, me.id);
         }
       } catch {
         // Token invalid or expired — clear it
@@ -42,14 +42,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (data: LoginRequest) => {
     const { token, user: me } = await authApi.login(data);
     await tokenStorage.setItem(TOKEN_KEY, token);
-    socketManager.connect(token);
+    socketManager.connect(token, me.id);
     setUser(me);
   };
 
   const register = async (data: RegisterRequest) => {
     const { token, user: me } = await authApi.register(data);
     await tokenStorage.setItem(TOKEN_KEY, token);
-    socketManager.connect(token);
+    socketManager.connect(token, me.id);
     setUser(me);
   };
 

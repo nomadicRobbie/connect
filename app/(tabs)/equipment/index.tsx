@@ -33,7 +33,7 @@ function AssetCard({ asset }: { asset: Asset }) {
   const icon = TYPE_ICONS[asset.type] ?? "cube-outline";
 
   return (
-    <Card onPress={() => router.push({ pathname: "/assets/[id]", params: { id: asset.id } })}>
+    <Card onPress={() => router.push({ pathname: "/equipment/[id]", params: { id: asset.id } })}>
       <View style={styles.assetRow}>
         <View style={styles.iconWrap}>
           <Ionicons name={icon} size={24} color={colors.primaryLight} />
@@ -73,7 +73,7 @@ export default function AssetsScreen() {
           title: "Assets",
           headerRight: canCreate
             ? () => (
-                <Pressable onPress={() => router.push("/assets/form/new")} style={styles.headerBtn}>
+                <Pressable onPress={() => router.push("/equipment/form/new")} style={styles.headerBtn}>
                   <Ionicons name="add" size={26} color={colors.primaryLight} />
                 </Pressable>
               )
@@ -118,7 +118,7 @@ export default function AssetsScreen() {
                 description="Try adjusting your filters or add a new asset."
                 action={
                   canCreate ? (
-                    <Pressable onPress={() => router.push("/assets/form/new")} style={styles.emptyAction}>
+                    <Pressable onPress={() => router.push("/equipment/form/new")} style={styles.emptyAction}>
                       <Text style={styles.emptyActionText}>+ Add Asset</Text>
                     </Pressable>
                   ) : undefined

@@ -5,10 +5,16 @@ import { queryClient } from "../api/queryClient";
 import { socketManager } from "../socket";
 import type { ChatReadState, ChatRoom, ChatSendMessagePayload, Presence, User } from "../types";
 
-export function usePeople() {
+export function usePeople(currentUserId?: string | null) {
   return useQuery({
-    queryKey: ["chat", "rooms"],
-    queryFn: async () => sortRoomsByActivity(await chatApi.listRooms()),
+    queryKey: ["chat", "rooms", currentUserId ?? null],
+    queryFn: async () => {
+      const rooms = await chatApi.listRooms();
+      if (!currentUserId) return sortRoomsByActivity(rooms);
+
+      const visibleRooms = rooms.filter((room) => room.members.some((member) => member.userId === currentUserId));
+      return sortRoomsByActivity(visibleRooms);
+    },
   });
 }
 
@@ -17,25 +23,33 @@ export function useChatRoom(roomId: string) {
     queryKey: ["chat", "rooms", roomId],
     queryFn: () => chatApi.getRoom(roomId),
     enabled: !!roomId,
+    retry: (failureCount, error: Error & { status?: number }) => {
+      if (error.status === 403 || error.status === 404) return false;
+      return failureCount < 2;
+    },
   });
 }
 
-export function useRoomMessages(roomId: string) {
+export function useRoomMessages(roomId: string, enabled = true) {
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId || !enabled) return;
 
     void socketManager.joinChatRoom({ roomId });
     return () => {
       void socketManager.leaveChatRoom({ roomId });
     };
-  }, [roomId]);
+  }, [enabled, roomId]);
 
   return useInfiniteQuery({
     queryKey: ["chat", "rooms", roomId, "messages"],
     queryFn: ({ pageParam }) => chatApi.getRoomMessages({ roomId, limit: 50, cursor: pageParam ?? undefined }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => (lastPage.pageInfo.hasMore ? (lastPage.pageInfo.nextCursor ?? null) : null),
-    enabled: !!roomId,
+    enabled: !!roomId && enabled,
+    retry: (failureCount, error: Error & { status?: number }) => {
+      if (error.status === 403 || error.status === 404) return false;
+      return failureCount < 2;
+    },
   });
 }
 
@@ -55,12 +69,15 @@ export function useSendChatMessage() {
 export function useMarkRoomRead() {
   return useMutation({
     mutationFn: async (roomId: string) => {
-      const readState = await socketManager.markChatRoomRead({ roomId });
-      return readState ?? chatApi.markRoomRead(roomId);
+      try {
+        return await socketManager.markChatRoomRead({ roomId });
+      } catch {
+        return chatApi.markRoomRead(roomId);
+      }
     },
     onSuccess: async (readState: ChatReadState) => {
       socketManager.applyRoomRead(readState);
-      await Promise.all([queryClient.invalidateQueries({ queryKey: ["chat", "rooms"] }), queryClient.invalidateQueries({ queryKey: ["chat", "rooms", readState.roomId] })]);
+      await queryClient.invalidateQueries({ queryKey: ["chat", "rooms"] });
     },
   });
 }
@@ -85,7 +102,7 @@ export function useCreateGroupRoom() {
 }
 
 export function useKnownContacts(currentUserId?: string | null) {
-  const { data: rooms } = usePeople();
+  const { data: rooms } = usePeople(currentUserId);
   return useMemo(() => {
     if (!rooms || !currentUserId) return [];
     const userMap = new Map<string, User>();

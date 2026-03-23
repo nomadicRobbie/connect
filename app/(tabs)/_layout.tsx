@@ -7,7 +7,7 @@ import React from "react";
 
 export default function TabLayout() {
   const { user, isLoading } = useAuth();
-  const { data: rooms } = usePeople();
+  const { data: rooms } = usePeople(user?.id);
   const totalUnread = (rooms ?? []).reduce((sum, r) => sum + r.unreadCount, 0);
 
   if (isLoading) return null;
@@ -37,7 +37,7 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="assets"
+        name="equipment"
         options={{
           title: "Assets",
           tabBarIcon: ({ color, size }) => <Ionicons name="cube-outline" size={size} color={color} />,

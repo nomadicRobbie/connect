@@ -1,10 +1,11 @@
+import { authApi } from "@/src/api/auth";
 import { Button, EmptyState, Input, SectionHeader, colors, radius, spacing, typography } from "@/src/components/ui";
 import { useAuth } from "@/src/context/AuthContext";
-import { useCreateDirectRoom, useCreateGroupRoom, useKnownContacts } from "@/src/hooks/usePeople";
+import { useCreateDirectRoom, useCreateGroupRoom } from "@/src/hooks/usePeople";
 import type { User } from "@/src/types";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -34,8 +35,37 @@ export default function NewConversationScreen() {
   const [mode, setMode] = useState<"dm" | "group">("dm");
   const [groupName, setGroupName] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [users, setUsers] = useState<User[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
 
-  const contacts = useKnownContacts(user?.id);
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchUsers = async () => {
+      try {
+        const data = await authApi.getUsers();
+        if (!cancelled) {
+          setUsers(data);
+        }
+      } catch (error) {
+        console.error(error);
+      } finally {
+        if (!cancelled) {
+          setLoadingUsers(false);
+        }
+      }
+    };
+
+    void fetchUsers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const contacts = useMemo(() => {
+    return users.filter((contact) => contact.id !== user?.id).sort((a, b) => a.name.localeCompare(b.name));
+  }, [users, user?.id]);
   const { mutateAsync: createDM, isPending: creatingDM } = useCreateDirectRoom();
   const { mutateAsync: createGroup, isPending: creatingGroup } = useCreateGroupRoom();
 
@@ -80,7 +110,7 @@ export default function NewConversationScreen() {
         </View>
 
         {mode === "dm" ? (
-          contacts.length === 0 ? (
+          !loadingUsers && contacts.length === 0 ? (
             <EmptyState icon="person-outline" title="No contacts yet" description="Contacts appear here once you share a room with other users." />
           ) : (
             <View style={styles.section}>
@@ -106,9 +136,9 @@ export default function NewConversationScreen() {
                   <ContactRow key={contact.id} contact={contact} onPress={() => toggleContact(contact.id)} selected={selectedIds.has(contact.id)} showCheck />
                 ))}
               </View>
-            ) : (
+            ) : !loadingUsers ? (
               <EmptyState icon="people-outline" title="No contacts yet" description="Contacts appear here once you share a room with other users." />
-            )}
+            ) : null}
             <Button label="Create Group Room" onPress={() => void handleCreateGroup()} loading={creatingGroup} disabled={!groupName.trim() || selectedIds.size === 0} />
           </View>
         )}

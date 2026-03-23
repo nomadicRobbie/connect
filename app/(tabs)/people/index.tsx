@@ -10,7 +10,8 @@ import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "rea
 function RoomCard({ room, currentUserId }: { room: ChatRoom; currentUserId?: string }) {
   const router = useRouter();
   const otherMember = getOtherRoomMember(room, currentUserId);
-  const { data: presence } = usePresence(otherMember ? [otherMember.id] : []);
+  const userIdsToCheck = useMemo(() => (otherMember ? [otherMember.id] : []), [otherMember?.id]);
+  const { data: presence } = usePresence(userIdsToCheck);
   const otherPresence = getPresenceForUser(presence, otherMember);
   const dateLabel = new Date(room.lastMessage?.createdAt ?? room.updatedAt).toLocaleString("en-AU", {
     day: "numeric",
@@ -52,7 +53,7 @@ function RoomCard({ room, currentUserId }: { room: ChatRoom; currentUserId?: str
 export default function PeopleScreen() {
   const { user } = useAuth();
   const router = useRouter();
-  const { data: rooms, isLoading, refetch } = usePeople();
+  const { data: rooms, isLoading, refetch } = usePeople(user?.id);
   const directMemberIds = useMemo(
     () =>
       (rooms ?? [])

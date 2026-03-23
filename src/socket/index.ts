@@ -1,26 +1,27 @@
 import { io, Socket } from "socket.io-client";
 import { queryClient } from "../api/queryClient";
 import type {
-    AckFailure,
-    Asset,
-    AssetDeletedPayload,
-    ChatMessageCreatedPayload,
-    ChatReadState,
-    ChatRoom,
-    ChatRoomJoinPayload,
-    ChatRoomLeavePayload,
-    ChatRoomRemovedPayload,
-    ChatSendMessagePayload,
-    ChatSendMessageResult,
-    MaintenanceDeletedPayload,
-    MaintenanceRecord,
-    Presence,
-    SocketAck,
-    SocketErrorPayload,
-    SocketReadyPayload,
+  AckFailure,
+  Asset,
+  AssetDeletedPayload,
+  ChatMessageCreatedPayload,
+  ChatReadState,
+  ChatRoom,
+  ChatRoomJoinPayload,
+  ChatRoomLeavePayload,
+  ChatRoomRemovedPayload,
+  ChatSendMessagePayload,
+  ChatSendMessageResult,
+  MaintenanceDeletedPayload,
+  MaintenanceRecord,
+  Presence,
+  SocketAck,
+  SocketErrorPayload,
+  SocketReadyPayload,
 } from "../types";
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3000";
+const READY_TIMEOUT_MS = 10000;
 
 type PresenceListener = () => void;
 
@@ -45,14 +46,22 @@ function sortRoomsByActivity(rooms: ChatRoom[]) {
 class SocketManager {
   private socket: Socket | null = null;
   private readyPayload: SocketReadyPayload | null = null;
+  private currentUserId: string | null = null;
+  private hasReceivedReady = false;
   private presenceMap = new Map<string, Presence>();
   private presenceListeners = new Set<PresenceListener>();
+  private activeAssetIds = new Set<string>();
+  private activeChatRoomIds = new Set<string>();
 
-  connect(token: string) {
+  connect(token: string, userId?: string) {
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
     }
+
+    this.currentUserId = userId ?? this.currentUserId;
+    this.readyPayload = null;
+    this.hasReceivedReady = false;
 
     this.socket = io(BASE_URL, {
       auth: { token },
@@ -67,12 +76,29 @@ class SocketManager {
   private registerCoreListeners() {
     if (!this.socket) return;
 
+    this.socket.on("connect", () => {
+      queryClient.setQueryData(["socket", "connected"], true);
+    });
+
+    this.socket.on("disconnect", () => {
+      this.readyPayload = null;
+      queryClient.setQueryData(["socket", "connected"], false);
+      queryClient.setQueryData(["socket", "ready"], null);
+    });
+
     this.socket.on("socket:ready", (payload: SocketReadyPayload) => {
+      const shouldRestoreChatRooms = this.hasReceivedReady;
       this.readyPayload = payload;
+      this.hasReceivedReady = true;
+      this.currentUserId = payload.userId;
+      queryClient.setQueryData(["socket", "error"], null);
+      queryClient.setQueryData(["socket", "ready"], payload);
+      this.restoreActiveSubscriptions({ includeChatRooms: shouldRestoreChatRooms });
     });
 
     this.socket.on("socket:error", (payload: SocketErrorPayload) => {
       this.readyPayload = null;
+      queryClient.setQueryData(["socket", "ready"], null);
       queryClient.setQueryData(["socket", "error"], payload);
     });
 
@@ -146,7 +172,69 @@ class SocketManager {
     });
   }
 
+  private async waitForReady() {
+    if (this.readyPayload) {
+      return this.readyPayload;
+    }
+
+    const socket = this.socket;
+
+    if (!socket) {
+      throw new Error("Socket is not connected");
+    }
+
+    return new Promise<SocketReadyPayload>((resolve, reject) => {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+      const cleanup = () => {
+        socket.off("socket:ready", handleReady);
+        socket.off("socket:error", handleError);
+        socket.off("disconnect", handleDisconnect);
+        if (timeoutId) clearTimeout(timeoutId);
+      };
+
+      const handleReady = (payload: SocketReadyPayload) => {
+        cleanup();
+        resolve(payload);
+      };
+
+      const handleError = (payload: SocketErrorPayload) => {
+        cleanup();
+        reject(toError(payload));
+      };
+
+      const handleDisconnect = () => {
+        cleanup();
+        reject(new Error("Socket disconnected before it became ready"));
+      };
+
+      socket.on("socket:ready", handleReady);
+      socket.on("socket:error", handleError);
+      socket.on("disconnect", handleDisconnect);
+      timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new Error("Socket did not become ready in time"));
+      }, READY_TIMEOUT_MS);
+    });
+  }
+
+  private restoreActiveSubscriptions(options: { includeChatRooms: boolean }) {
+    for (const assetId of this.activeAssetIds) {
+      this.socket?.emit("asset:join", assetId);
+    }
+
+    if (!options.includeChatRooms) {
+      return;
+    }
+
+    for (const roomId of this.activeChatRoomIds) {
+      void this.joinChatRoom({ roomId }, { persist: false });
+    }
+  }
+
   private async emitWithAck<TPayload, TResult>(event: string, payload: TPayload) {
+    await this.waitForReady();
+
     if (!this.socket) {
       throw new Error("Socket is not connected");
     }
@@ -184,18 +272,36 @@ class SocketManager {
   }
 
   joinAsset(assetId: string) {
-    this.socket?.emit("asset:join", assetId);
+    this.activeAssetIds.add(assetId);
+    if (this.readyPayload) {
+      this.socket?.emit("asset:join", assetId);
+    }
   }
 
   leaveAsset(assetId: string) {
-    this.socket?.emit("asset:leave", assetId);
+    this.activeAssetIds.delete(assetId);
+    if (this.readyPayload) {
+      this.socket?.emit("asset:leave", assetId);
+    }
   }
 
-  joinChatRoom(payload: ChatRoomJoinPayload) {
-    return this.emitWithAck<ChatRoomJoinPayload, ChatRoom>("chat:room:join", payload);
+  async joinChatRoom(payload: ChatRoomJoinPayload, options?: { persist?: boolean }) {
+    if (options?.persist !== false) {
+      this.activeChatRoomIds.add(payload.roomId);
+    }
+
+    const room = await this.emitWithAck<ChatRoomJoinPayload, ChatRoom>("chat:room:join", payload);
+    this.upsertRoom(room);
+    return room;
   }
 
-  leaveChatRoom(payload: ChatRoomLeavePayload) {
+  async leaveChatRoom(payload: ChatRoomLeavePayload) {
+    this.activeChatRoomIds.delete(payload.roomId);
+
+    if (!this.socket || !this.readyPayload) {
+      return { roomId: payload.roomId };
+    }
+
     return this.emitWithAck<ChatRoomLeavePayload, { roomId: string }>("chat:room:leave", payload);
   }
 
@@ -215,7 +321,7 @@ class SocketManager {
         if (room.id !== payload.roomId) return room;
 
         const members = room.members.map((member) => (member.userId === payload.userId ? { ...member, lastReadAt: payload.lastReadAt } : member));
-        const unreadCount = this.readyPayload?.userId === payload.userId ? 0 : room.unreadCount;
+        const unreadCount = this.currentUserId === payload.userId ? 0 : room.unreadCount;
 
         return {
           ...room,
@@ -230,7 +336,7 @@ class SocketManager {
       return {
         ...room,
         members: room.members.map((member) => (member.userId === payload.userId ? { ...member, lastReadAt: payload.lastReadAt } : member)),
-        unreadCount: this.readyPayload?.userId === payload.userId ? 0 : room.unreadCount,
+        unreadCount: this.currentUserId === payload.userId ? 0 : room.unreadCount,
       };
     });
   }
@@ -255,8 +361,14 @@ class SocketManager {
     this.socket?.disconnect();
     this.socket = null;
     this.readyPayload = null;
+    this.currentUserId = null;
     this.presenceMap.clear();
     this.presenceListeners.clear();
+    this.activeAssetIds.clear();
+    this.activeChatRoomIds.clear();
+    queryClient.setQueryData(["socket", "connected"], false);
+    queryClient.setQueryData(["socket", "ready"], null);
+    queryClient.setQueryData(["socket", "error"], null);
   }
 
   get isConnected() {

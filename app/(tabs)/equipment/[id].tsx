@@ -33,7 +33,7 @@ function MaintenanceItem({ record, assetId }: { record: MaintenanceRecord; asset
   const dueLabel = record.dueDate ? new Date(record.dueDate).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" }) : "—";
 
   return (
-    <Card onPress={() => router.push({ pathname: "/assets/maintenance/[id]", params: { id: record.id, assetId } })} style={styles.maintenanceItem}>
+    <Card onPress={() => router.push({ pathname: "/equipment/maintenance/[id]", params: { id: record.id, assetId } })} style={styles.maintenanceItem}>
       <View style={styles.maintenanceHeader}>
         <Text style={styles.maintenanceTitle} numberOfLines={2}>
           {record.title}
@@ -93,7 +93,7 @@ export default function AssetDetailScreen() {
           title: asset?.name ?? "Asset",
           headerRight: canEdit
             ? () => (
-                <Pressable onPress={() => router.push({ pathname: "/assets/form/[id]", params: { id: id! } })} style={{ paddingHorizontal: spacing.sm }}>
+                <Pressable onPress={() => router.push({ pathname: "/equipment/form/[id]", params: { id: id! } })} style={{ paddingHorizontal: spacing.sm }}>
                   <Ionicons name="create-outline" size={22} color={colors.primaryLight} />
                 </Pressable>
               )
@@ -148,7 +148,7 @@ export default function AssetDetailScreen() {
                     <Pressable
                       onPress={() =>
                         router.push({
-                          pathname: "/assets/maintenance/new",
+                          pathname: "/equipment/maintenance/new",
                           params: { assetId: id!, assetName: asset.name },
                         })
                       }

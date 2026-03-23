@@ -38,7 +38,7 @@ function MaintenanceRow({ record }: { record: MaintenanceRecord }) {
     <Card
       onPress={() =>
         router.push({
-          pathname: "/assets/[id]",
+          pathname: "/equipment/[id]",
           params: { id: record.assetId },
         })
       }
