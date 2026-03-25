@@ -8,8 +8,13 @@
     "scheme": "connect",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "owner": "exporobbie",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.exporobbie.connect",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +24,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.exporobbie.connect"
     },
     "web": {
       "output": "single",
@@ -45,6 +51,18 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6f2dfdb9-095b-4354-8d04-5c67a932714c"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/6f2dfdb9-095b-4354-8d04-5c67a932714c"
     }
   }
 }

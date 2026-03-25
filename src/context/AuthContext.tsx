@@ -39,18 +39,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  const login = async (data: LoginRequest) => {
-    const { token, user: me } = await authApi.login(data);
+  type AuthLikeResponse = {
+    token?: string;
+    user?: User | null;
+  };
+
+  async function establishSession(response: AuthLikeResponse, fallbackMessage: string) {
+    const token = response?.token;
+    if (!token) {
+      throw new Error("Authentication token missing from server response");
+    }
+
     await tokenStorage.setItem(TOKEN_KEY, token);
-    socketManager.connect(token, me.id);
-    setUser(me);
+
+    try {
+      let me = response?.user ?? null;
+
+      // Defensive fallback for backends that return token only on register/login
+      if (!me?.id) {
+        me = await authApi.me();
+      }
+
+      if (!me?.id) {
+        throw new Error(fallbackMessage);
+      }
+
+      socketManager.connect(token, me.id);
+      setUser(me);
+    } catch (error) {
+      // Prevent half-authenticated state if anything fails after token write
+      await tokenStorage.deleteItem(TOKEN_KEY);
+      throw error instanceof Error ? error : new Error(fallbackMessage);
+    }
+  }
+
+  const login = async (data: LoginRequest) => {
+    const response = await authApi.login(data);
+    await establishSession(response, "Login succeeded but user profile is invalid");
   };
 
   const register = async (data: RegisterRequest) => {
-    const { token, user: me } = await authApi.register(data);
-    await tokenStorage.setItem(TOKEN_KEY, token);
-    socketManager.connect(token, me.id);
-    setUser(me);
+    const registerResponse = await authApi.register(data);
+
+    // If backend already returns token/user, use it.
+    const token =
+      (registerResponse as any)?.token ?? (registerResponse as any)?.accessToken ?? (registerResponse as any)?.data?.token ?? (registerResponse as any)?.data?.accessToken;
+
+    const user = (registerResponse as any)?.user ?? (registerResponse as any)?.data?.user;
+
+    if (token) {
+      await establishSession({ token, user }, "Registration succeeded but user profile is invalid");
+      return;
+    }
+
+    // Fallback: register endpoint created user, but did not issue token.
+    const loginResponse = await authApi.login({
+      email: data.email,
+      password: data.password,
+    });
+
+    await establishSession(loginResponse, "Registration succeeded but automatic sign-in failed");
   };
 
   const logout = async () => {

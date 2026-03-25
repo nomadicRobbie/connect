@@ -2,7 +2,7 @@ import { Button, colors, Input, Screen, spacing, typography } from "@/src/compon
 import { useAuth } from "@/src/context/AuthContext";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -37,9 +37,10 @@ export default function RegisterScreen() {
         password,
         role: "TECHNICIAN",
       });
+      router.replace("/dashboard");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Registration failed";
-      Alert.alert("Registration Failed", message);
+      setErrors({ form: message });
     } finally {
       setLoading(false);
     }
@@ -71,6 +72,7 @@ export default function RegisterScreen() {
           <Input label="Password" value={password} onChangeText={setPassword} secureTextEntry error={errors.password} hint="Minimum 8 characters" placeholder="••••••••" />
           <Input label="Confirm Password" value={confirm} onChangeText={setConfirm} secureTextEntry error={errors.confirm} placeholder="••••••••" />
         </View>
+        {errors.form ? <Text style={styles.error}>{errors.form}</Text> : null}
 
         <Button label="Create Account" onPress={handleRegister} loading={loading} fullWidth size="lg" style={styles.submitBtn} />
 
@@ -90,6 +92,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingTop: spacing.xxxl,
     paddingBottom: spacing.xxl,
+  },
+  error: {
+    ...typography.body,
+    color: colors.error,
+    marginBottom: spacing.lg,
   },
   logo: {
     ...typography.h1,
