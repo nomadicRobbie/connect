@@ -1,9 +1,12 @@
-import { Button, colors, DateField, Input, Screen, SelectField, spacing, typography } from "@/src/components/ui";
+import { Button, colors, DateField, Input, Screen, SelectField, spacing, TimeField, typography } from "@/src/components/ui";
+import { calendarDateFromIso, hasExplicitTimeInIso, isoStringFromCalendarDateAndTime, timeStringFromIso } from "@/src/components/ui/dateFieldUtils";
+import { useAuth } from "@/src/context/AuthContext";
 import { useCreateMaintenance } from "@/src/hooks/useMaintenance";
+import { useAssignableUsers } from "@/src/hooks/usePeople";
 import type { MaintenanceFormData, MaintenancePriority, MaintenanceStatus } from "@/src/types";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
-import { Alert, StyleSheet, Text, View } from "react-native";
+import { Alert, StyleSheet, Switch, Text, View } from "react-native";
 
 const STATUS_OPTIONS: { label: string; value: MaintenanceStatus }[] = [
   { label: "Pending", value: "PENDING" },
@@ -24,6 +27,10 @@ export default function NewMaintenanceScreen() {
   const { assetId, assetName } = useLocalSearchParams<{ assetId: string; assetName?: string }>();
   const { mutateAsync: createRecord, isPending } = useCreateMaintenance();
 
+  const { user } = useAuth();
+  const { data: assignableUsers = [] } = useAssignableUsers(user?.id);
+  const assigneeOptions = [{ label: "Unassigned", value: "" }, ...assignableUsers.map((u) => ({ label: u.name, value: u.id }))];
+
   const [form, setForm] = useState<MaintenanceFormData>({
     title: "",
     description: "",
@@ -34,6 +41,8 @@ export default function NewMaintenanceScreen() {
     assignedToId: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [includeDueTime, setIncludeDueTime] = useState(false);
+  const [dueTime, setDueTime] = useState("09:00");
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -45,13 +54,18 @@ export default function NewMaintenanceScreen() {
 
   const handleSubmit = async () => {
     if (!validate()) return;
+
+    const dueCalendarDate = calendarDateFromIso(form.dueDate);
+    const dueWithTime = dueCalendarDate ? isoStringFromCalendarDateAndTime(dueCalendarDate, dueTime) : undefined;
+    const normalizedDueDate = includeDueTime ? dueWithTime || form.dueDate || undefined : form.dueDate || undefined;
+
     try {
       await createRecord({
         title: form.title.trim(),
         description: form.description?.trim() || undefined,
         status: form.status,
         priority: form.priority,
-        dueDate: form.dueDate || undefined,
+        dueDate: normalizedDueDate,
         assetId: form.assetId,
         assignedToId: form.assignedToId?.trim() || undefined,
       });
@@ -78,14 +92,42 @@ export default function NewMaintenanceScreen() {
           <DateField
             label="Due Date"
             value={form.dueDate}
-            onChange={(dueDate?: string) => setForm((prev) => ({ ...prev, dueDate: dueDate ?? "" }))}
+            onChange={(dueDate?: string) => {
+              setForm((prev) => ({ ...prev, dueDate: dueDate ?? "" }));
+              if (!dueDate) {
+                setIncludeDueTime(false);
+                setDueTime("09:00");
+                return;
+              }
+
+              if (hasExplicitTimeInIso(dueDate)) {
+                setIncludeDueTime(true);
+                setDueTime(timeStringFromIso(dueDate) || "09:00");
+              }
+            }}
             hint="Optional. Selected dates are sent to the server as ISO strings."
           />
-          <Input
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleTextWrap}>
+              <Text style={styles.toggleLabel}>Schedule exact time</Text>
+              <Text style={styles.toggleHint}>{form.dueDate ? "Optional. Add appointment time." : "Select a due date to enable time."}</Text>
+            </View>
+            <Switch
+              value={includeDueTime}
+              onValueChange={setIncludeDueTime}
+              disabled={!form.dueDate}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor={colors.textInverse}
+            />
+          </View>
+          {includeDueTime && form.dueDate ? (
+            <TimeField label="Due Time" value={dueTime} onChange={(value?: string) => setDueTime(value ?? "")} hint="Optional. Uses local time and is saved as ISO." />
+          ) : null}
+          <SelectField
             label="Assigned To User ID"
+            options={assigneeOptions}
             value={form.assignedToId}
-            onChangeText={(assignedToId) => setForm((prev) => ({ ...prev, assignedToId }))}
-            placeholder="Optional assignee ID"
+            onChange={(assignedToId) => setForm((prev) => ({ ...prev, assignedToId }))}
           />
           <Input
             label="Description"
@@ -119,6 +161,25 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: spacing.lg,
+  },
+  toggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  toggleTextWrap: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  toggleLabel: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: "600",
+  },
+  toggleHint: {
+    ...typography.bodySmall,
+    color: colors.textMuted,
   },
   actions: {
     marginTop: spacing.xl,

@@ -7,5 +7,6 @@ export { Input } from "./Input";
 export { Screen } from "./Screen";
 export { SectionHeader } from "./SectionHeader";
 export { SelectField } from "./SelectField";
+export { TimeField } from "./TimeField";
 export { colors, radius, spacing, typography } from "./tokens";
 

@@ -13,6 +13,7 @@ import {
     spacing,
     typography,
 } from "@/src/components/ui";
+import { hasExplicitTimeInIso } from "@/src/components/ui/dateFieldUtils";
 import { useAuth } from "@/src/context/AuthContext";
 import { useAssetDetail, useDeleteAsset } from "@/src/hooks/useAssets";
 import type { MaintenanceRecord } from "@/src/types";
@@ -30,7 +31,11 @@ const TYPE_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
 
 function MaintenanceItem({ record, assetId }: { record: MaintenanceRecord; assetId: string }) {
   const router = useRouter();
-  const dueLabel = record.dueDate ? new Date(record.dueDate).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" }) : "—";
+  const dueLabel = record.dueDate
+    ? hasExplicitTimeInIso(record.dueDate)
+      ? new Date(record.dueDate).toLocaleString("en-AU", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })
+      : new Date(record.dueDate).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })
+    : "—";
 
   return (
     <Card onPress={() => router.push({ pathname: "/equipment/maintenance/[id]", params: { id: record.id, assetId } })} style={styles.maintenanceItem}>

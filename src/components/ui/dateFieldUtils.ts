@@ -49,3 +49,35 @@ export function formatIsoAsDisplayDate(isoString?: string) {
     year: "numeric",
   });
 }
+
+export function hasExplicitTimeInIso(isoString?: string) {
+  if (!isoString) return false;
+
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+
+  return date.getUTCHours() !== 0 || date.getUTCMinutes() !== 0 || date.getUTCSeconds() !== 0 || date.getUTCMilliseconds() !== 0;
+}
+
+export function timeStringFromIso(isoString?: string) {
+  if (!isoString) return "";
+
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+export function isoStringFromCalendarDateAndTime(calendarDate: string, time: string) {
+  if (!calendarDate || !time) return undefined;
+
+  const [year, month, day] = calendarDate.split("-").map(Number);
+  const [hours, minutes] = time.split(":").map(Number);
+  if (!year || !month || !day || Number.isNaN(hours) || Number.isNaN(minutes)) return undefined;
+
+  return new Date(year, month - 1, day, hours, minutes, 0, 0).toISOString();
+}

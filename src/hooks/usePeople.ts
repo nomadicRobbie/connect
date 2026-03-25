@@ -1,9 +1,26 @@
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import { authApi } from "../api/auth";
 import { chatApi, sortRoomsByActivity } from "../api/chat";
 import { queryClient } from "../api/queryClient";
 import { socketManager } from "../socket";
 import type { ChatReadState, ChatRoom, ChatSendMessagePayload, Presence, User } from "../types";
+
+export function useUsers() {
+  return useQuery({
+    queryKey: ["users"],
+    queryFn: () => authApi.getUsers(),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useAssignableUsers(currentUserId?: string | null) {
+  const { data: users = [], ...query } = useUsers();
+
+  const assignableUsers = useMemo(() => users.filter((u) => u.id !== currentUserId).sort((a, b) => a.name.localeCompare(b.name)), [users, currentUserId]);
+
+  return { data: assignableUsers, ...query };
+}
 
 export function usePeople(currentUserId?: string | null) {
   return useQuery({

@@ -1,4 +1,5 @@
 import { Card, EmptyState, MaintenanceStatusBadge, PriorityBadge, SectionHeader, colors, spacing, typography } from "@/src/components/ui";
+import { hasExplicitTimeInIso } from "@/src/components/ui/dateFieldUtils";
 import { useAuth } from "@/src/context/AuthContext";
 import { useDashboard } from "@/src/hooks/useDashboard";
 import type { MaintenanceRecord } from "@/src/types";
@@ -28,10 +29,17 @@ function StatCard({ label, value, icon, color, surface }: StatCardProps) {
 function MaintenanceRow({ record }: { record: MaintenanceRecord }) {
   const router = useRouter();
   const dueLabel = record.dueDate
-    ? new Date(record.dueDate).toLocaleDateString("en-AU", {
-        day: "numeric",
-        month: "short",
-      })
+    ? hasExplicitTimeInIso(record.dueDate)
+      ? new Date(record.dueDate).toLocaleString("en-AU", {
+          day: "numeric",
+          month: "short",
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      : new Date(record.dueDate).toLocaleDateString("en-AU", {
+          day: "numeric",
+          month: "short",
+        })
     : "No due date";
 
   return (

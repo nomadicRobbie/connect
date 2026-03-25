@@ -1,11 +1,10 @@
-import { authApi } from "@/src/api/auth";
 import { Button, EmptyState, Input, SectionHeader, colors, radius, spacing, typography } from "@/src/components/ui";
 import { useAuth } from "@/src/context/AuthContext";
-import { useCreateDirectRoom, useCreateGroupRoom } from "@/src/hooks/usePeople";
+import { useAssignableUsers, useCreateDirectRoom, useCreateGroupRoom } from "@/src/hooks/usePeople";
 import type { User } from "@/src/types";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -35,37 +34,8 @@ export default function NewConversationScreen() {
   const [mode, setMode] = useState<"dm" | "group">("dm");
   const [groupName, setGroupName] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [users, setUsers] = useState<User[]>([]);
-  const [loadingUsers, setLoadingUsers] = useState(true);
+  const { data: contacts = [], isLoading: loadingUsers } = useAssignableUsers(user?.id);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const fetchUsers = async () => {
-      try {
-        const data = await authApi.getUsers();
-        if (!cancelled) {
-          setUsers(data);
-        }
-      } catch (error) {
-        console.error(error);
-      } finally {
-        if (!cancelled) {
-          setLoadingUsers(false);
-        }
-      }
-    };
-
-    void fetchUsers();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const contacts = useMemo(() => {
-    return users.filter((contact) => contact.id !== user?.id).sort((a, b) => a.name.localeCompare(b.name));
-  }, [users, user?.id]);
   const { mutateAsync: createDM, isPending: creatingDM } = useCreateDirectRoom();
   const { mutateAsync: createGroup, isPending: creatingGroup } = useCreateGroupRoom();
 
