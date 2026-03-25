@@ -1,12 +1,13 @@
 import { sortMessagesChronologically } from "@/src/api/chat";
-import { Button, Card, EmptyState, Input, colors, radius, spacing, typography } from "@/src/components/ui";
+import { Card, EmptyState, colors, radius, spacing, typography } from "@/src/components/ui";
 import { useAuth } from "@/src/context/AuthContext";
 import { getOtherRoomMember, getPresenceForUser, useChatRoom, useMarkRoomRead, usePresence, useRoomMessages, useSendChatMessage } from "@/src/hooks/usePeople";
 import type { ChatMessage } from "@/src/types";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 function MessageBubble({ message, currentUserId }: { message: ChatMessage; currentUserId?: string }) {
   const mine = message.senderId === currentUserId;
@@ -29,6 +30,7 @@ function MessageBubble({ message, currentUserId }: { message: ChatMessage; curre
 export default function RoomScreen() {
   const { user } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { roomId } = useLocalSearchParams<{ roomId: string }>();
   const { data: room, isLoading: roomLoading } = useChatRoom(roomId!);
   const canLoadMessages = !!room && !roomLoading;
@@ -37,6 +39,7 @@ export default function RoomScreen() {
   const { mutateAsync: markRead } = useMarkRoomRead();
   const [draft, setDraft] = useState("");
   const markedRoomRef = useRef<string | null>(null);
+  const flatListRef = useRef<FlatList>(null);
 
   const messages = useMemo(() => sortMessagesChronologically((data?.pages ?? []).flatMap((page) => page.data)), [data]);
 
@@ -86,14 +89,17 @@ export default function RoomScreen() {
             ) : null,
         }}
       />
-      <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}>
         <FlatList
+          ref={flatListRef}
           data={messages}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => <MessageBubble message={item} currentUserId={user?.id} />}
           contentInsetAdjustmentBehavior="automatic"
           automaticallyAdjustContentInsets
           automaticallyAdjustsScrollIndicatorInsets
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
           ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
           ListHeaderComponent={
             <>
@@ -117,9 +123,19 @@ export default function RoomScreen() {
           contentContainerStyle={styles.threadList}
         />
 
-        <View style={styles.composer}>
-          <Input label="Message" value={draft} onChangeText={setDraft} placeholder="Type a message" multiline />
-          <Button label="Send" onPress={handleSend} loading={sending} disabled={!draft.trim()} />
+        <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+          <TextInput
+            style={styles.composerInput}
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="Message"
+            placeholderTextColor={colors.textMuted}
+            multiline
+            returnKeyType="default"
+          />
+          <Pressable style={[styles.sendButton, (!draft.trim() || sending) && styles.sendButtonDisabled]} onPress={() => void handleSend()} disabled={!draft.trim() || sending}>
+            {sending ? <ActivityIndicator size="small" color={colors.textInverse} /> : <Ionicons name="arrow-up" size={20} color={colors.textInverse} />}
+          </Pressable>
         </View>
       </KeyboardAvoidingView>
     </View>
@@ -216,12 +232,38 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   composer: {
-    paddingHorizontal: spacing.lg,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.lg,
     gap: spacing.sm,
     backgroundColor: colors.bg,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  composerInput: {
+    flex: 1,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.xl,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm + 2,
+    paddingBottom: spacing.sm + 2,
+    ...typography.body,
+    color: colors.text,
+    maxHeight: 120,
+  },
+  sendButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 2,
+  },
+  sendButtonDisabled: {
+    backgroundColor: colors.bgMuted,
   },
 });
