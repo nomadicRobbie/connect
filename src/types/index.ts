@@ -219,3 +219,89 @@ export interface ApiError {
   message: string;
   status?: number;
 }
+
+// ── Maintenance Comments ──────────────────────────────────────────────
+
+export interface MaintenanceComment {
+  id: string;
+  content: string;
+  maintenanceRecordId: string;
+  authorId: string;
+  author: User;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MaintenanceCommentsResponse {
+  data: MaintenanceComment[];
+  pageInfo: {
+    hasMore: boolean;
+    nextCursor?: string | null;
+    limit: number;
+  };
+}
+
+export interface MaintenanceCommentCreatedPayload {
+  maintenanceRecordId: string;
+  comment: { id: string };
+}
+
+// ── Asset Comments ────────────────────────────────────────────────────
+
+export interface AssetComment {
+  id: string;
+  content: string;
+  assetId: string;
+  authorId: string;
+  author: User;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssetCommentsResponse {
+  data: AssetComment[];
+  pageInfo: {
+    hasMore: boolean;
+    nextCursor?: string | null;
+    limit: number;
+  };
+}
+
+export interface AssetCommentCreatedPayload {
+  assetId: string;
+  comment: { id: string };
+}
+
+// ── Notifications ─────────────────────────────────────────────────────
+
+export type NotificationType = "MAINTENANCE_ASSIGNED" | "MAINTENANCE_COMMENT" | "MAINTENANCE_STATUS_CHANGED";
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  readAt?: string | null;
+  createdAt: string;
+  recipientId: string;
+  /** Polymorphic reference to the resource that triggered the notification */
+  resourceType?: string;
+  resourceId?: string;
+}
+
+export interface NotificationsResponse {
+  data: AppNotification[];
+  pageInfo: {
+    hasMore: boolean;
+    nextCursor?: string | null;
+    limit: number;
+  };
+}
+
+export interface NotificationCreatedPayload {
+  notification: AppNotification;
+}
+
+export interface UnreadNotificationCountPayload {
+  count: number;
+}

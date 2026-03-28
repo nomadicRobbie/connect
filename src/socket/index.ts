@@ -1,23 +1,26 @@
 import { io, Socket } from "socket.io-client";
 import { queryClient } from "../api/queryClient";
 import type {
-  AckFailure,
-  Asset,
-  AssetDeletedPayload,
-  ChatMessageCreatedPayload,
-  ChatReadState,
-  ChatRoom,
-  ChatRoomJoinPayload,
-  ChatRoomLeavePayload,
-  ChatRoomRemovedPayload,
-  ChatSendMessagePayload,
-  ChatSendMessageResult,
-  MaintenanceDeletedPayload,
-  MaintenanceRecord,
-  Presence,
-  SocketAck,
-  SocketErrorPayload,
-  SocketReadyPayload,
+    AckFailure,
+    Asset,
+    AssetDeletedPayload,
+    ChatMessageCreatedPayload,
+    ChatReadState,
+    ChatRoom,
+    ChatRoomJoinPayload,
+    ChatRoomLeavePayload,
+    ChatRoomRemovedPayload,
+    ChatSendMessagePayload,
+    ChatSendMessageResult,
+    MaintenanceCommentCreatedPayload,
+    MaintenanceDeletedPayload,
+    MaintenanceRecord,
+    NotificationCreatedPayload,
+    Presence,
+    SocketAck,
+    SocketErrorPayload,
+    SocketReadyPayload,
+    UnreadNotificationCountPayload
 } from "../types";
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -169,6 +172,21 @@ class SocketManager {
       for (const listener of this.presenceListeners) {
         listener();
       }
+    });
+
+    // ── Maintenance comments ────────────────────────────────────────
+    this.socket.on("maintenance:comment:created", ({ maintenanceRecordId }: MaintenanceCommentCreatedPayload) => {
+      queryClient.invalidateQueries({ queryKey: ["maintenance", maintenanceRecordId, "comments"] });
+    });
+
+    // ── Notifications ───────────────────────────────────────────────
+    this.socket.on("notification:created", ({ notification }: NotificationCreatedPayload) => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications", "unread-count"] });
+    });
+
+    this.socket.on("notification:unread-count", ({ count }: UnreadNotificationCountPayload) => {
+      queryClient.setQueryData(["notifications", "unread-count"], { count });
     });
   }
 

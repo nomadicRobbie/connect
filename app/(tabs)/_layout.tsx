@@ -1,5 +1,6 @@
 import { colors, typography } from "@/src/components/ui/tokens";
 import { useAuth } from "@/src/context/AuthContext";
+import { useUnreadNotificationCount } from "@/src/hooks/useNotifications";
 import { usePeople } from "@/src/hooks/usePeople";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, Tabs } from "expo-router";
@@ -8,7 +9,9 @@ import React from "react";
 export default function TabLayout() {
   const { user, isLoading } = useAuth();
   const { data: rooms } = usePeople(user?.id);
+  const { data: unreadNotifs } = useUnreadNotificationCount();
   const totalUnread = (rooms ?? []).reduce((sum, r) => sum + r.unreadCount, 0);
+  const notifBadge = unreadNotifs?.count ?? 0;
 
   if (isLoading) return null;
   if (!user) return <Redirect href="/login" />;
@@ -49,6 +52,14 @@ export default function TabLayout() {
           title: "People",
           tabBarIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} />,
           tabBarBadge: totalUnread > 0 ? totalUnread : undefined,
+        }}
+      />
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          title: "Alerts",
+          tabBarIcon: ({ color, size }) => <Ionicons name="notifications-outline" size={size} color={color} />,
+          tabBarBadge: notifBadge > 0 ? notifBadge : undefined,
         }}
       />
       <Tabs.Screen

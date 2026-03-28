@@ -1,33 +1,55 @@
 import {
-    AssetStatusBadge,
-    Button,
-    Card,
-    CardRow,
-    colors,
-    EmptyState,
-    MaintenanceStatusBadge,
-    PriorityBadge,
-    radius,
-    Screen,
-    SectionHeader,
-    spacing,
-    typography,
+  AssetStatusBadge,
+  Button,
+  Card,
+  CardRow,
+  colors,
+  EmptyState,
+  MaintenanceStatusBadge,
+  PriorityBadge,
+  radius,
+  Screen,
+  SectionHeader,
+  spacing,
+  typography,
 } from "@/src/components/ui";
 import { hasExplicitTimeInIso } from "@/src/components/ui/dateFieldUtils";
 import { useAuth } from "@/src/context/AuthContext";
 import { useAssetDetail, useDeleteAsset } from "@/src/hooks/useAssets";
-import type { MaintenanceRecord } from "@/src/types";
+import { useAssetComments, useCreateAssetComment } from "@/src/hooks/useComments";
+import type { AssetComment, MaintenanceRecord } from "@/src/types";
 import { can } from "@/src/utils/permissions";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const TYPE_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   VEHICLE: "car-outline",
   BOAT: "boat-outline",
   LODGE: "home-outline",
 };
+
+function CommentBubble({ comment, currentUserId }: { comment: AssetComment; currentUserId?: string }) {
+  const mine = comment.authorId === currentUserId;
+  const timeLabel = new Date(comment.createdAt).toLocaleString("en-AU", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  return (
+    <View style={[commentStyles.row, mine ? commentStyles.rowMine : commentStyles.rowOther]}>
+      <View style={[commentStyles.bubble, mine ? commentStyles.bubbleMine : commentStyles.bubbleOther]}>
+        {!mine ? <Text style={commentStyles.author}>{comment.author.name}</Text> : null}
+        <Text style={[commentStyles.content, mine ? commentStyles.contentMine : commentStyles.contentOther]}>{comment.content}</Text>
+        <Text style={[commentStyles.time, mine ? commentStyles.timeMine : commentStyles.timeOther]}>{timeLabel}</Text>
+      </View>
+    </View>
+  );
+}
 
 function MaintenanceItem({ record, assetId }: { record: MaintenanceRecord; assetId: string }) {
   const router = useRouter();
@@ -56,10 +78,33 @@ function MaintenanceItem({ record, assetId }: { record: MaintenanceRecord; asset
 
 export default function AssetDetailScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const { data: asset, isLoading } = useAssetDetail(id!);
   const { mutate: deleteAsset, isPending: deleting } = useDeleteAsset();
+
+  // Comments
+  const { data: commentsData, isLoading: commentsLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useAssetComments(id!, !!asset);
+  const { mutateAsync: createComment, isPending: sendingComment } = useCreateAssetComment(id!);
+  const [commentDraft, setCommentDraft] = useState("");
+
+  const comments = useMemo(
+    () => [...(commentsData?.pages ?? []).flatMap((page) => page.data)].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+    [commentsData],
+  );
+
+  const handleSendComment = async () => {
+    const text = commentDraft.trim();
+    if (!text) return;
+    try {
+      await createComment(text);
+      setCommentDraft("");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to send comment";
+      Alert.alert("Error", message);
+    }
+  };
 
   const canEdit = can(user?.role, "asset:update");
   const canDelete = can(user?.role, "asset:delete");
@@ -175,6 +220,46 @@ export default function AssetDetailScreen() {
               )}
             </View>
 
+            {/* Comments */}
+            <View style={commentStyles.section}>
+              <SectionHeader title="Comments" />
+
+              {commentsLoading ? (
+                <ActivityIndicator style={{ marginVertical: spacing.lg }} color={colors.primaryLight} />
+              ) : comments.length === 0 ? (
+                <Text style={commentStyles.empty}>No comments yet. Be the first to add one.</Text>
+              ) : (
+                <View style={commentStyles.list}>
+                  {hasNextPage ? (
+                    <Pressable onPress={() => fetchNextPage()} disabled={isFetchingNextPage} style={commentStyles.loadMore}>
+                      {isFetchingNextPage ? <ActivityIndicator size="small" color={colors.primaryLight} /> : <Text style={commentStyles.loadMoreText}>Load earlier comments</Text>}
+                    </Pressable>
+                  ) : null}
+                  {comments.map((comment) => (
+                    <CommentBubble key={comment.id} comment={comment} currentUserId={user?.id} />
+                  ))}
+                </View>
+              )}
+
+              <View style={[commentStyles.composer, { paddingBottom: insets.bottom || spacing.sm }]}>
+                <TextInput
+                  style={commentStyles.input}
+                  value={commentDraft}
+                  onChangeText={setCommentDraft}
+                  placeholder="Write a comment…"
+                  placeholderTextColor={colors.textMuted}
+                  multiline
+                  maxLength={2000}
+                />
+                <Pressable
+                  onPress={handleSendComment}
+                  disabled={!commentDraft.trim() || sendingComment}
+                  style={[commentStyles.sendBtn, (!commentDraft.trim() || sendingComment) && commentStyles.sendBtnDisabled]}>
+                  {sendingComment ? <ActivityIndicator size="small" color={colors.textInverse} /> : <Ionicons name="send" size={18} color={colors.textInverse} />}
+                </Pressable>
+              </View>
+            </View>
+
             {/* Danger zone */}
             {canDelete && (
               <View style={styles.dangerZone}>
@@ -268,5 +353,112 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xl,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+});
+
+const commentStyles = StyleSheet.create({
+  section: {
+    marginTop: spacing.xxl,
+  },
+  empty: {
+    ...typography.body,
+    color: colors.textMuted,
+    textAlign: "center",
+    marginVertical: spacing.lg,
+  },
+  list: {
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  loadMore: {
+    alignSelf: "center",
+    paddingVertical: spacing.sm,
+  },
+  loadMoreText: {
+    ...typography.bodySmall,
+    color: colors.primaryLight,
+    fontWeight: "600",
+  },
+  row: {
+    marginBottom: spacing.xs,
+  },
+  rowMine: {
+    alignItems: "flex-end",
+  },
+  rowOther: {
+    alignItems: "flex-start",
+  },
+  bubble: {
+    maxWidth: "80%",
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  bubbleMine: {
+    backgroundColor: colors.primaryLight,
+    borderBottomRightRadius: radius.sm,
+  },
+  bubbleOther: {
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderBottomLeftRadius: radius.sm,
+  },
+  author: {
+    ...typography.bodySmall,
+    fontWeight: "600",
+    color: colors.primaryLight,
+    marginBottom: spacing.xs,
+  },
+  content: {
+    ...typography.body,
+  },
+  contentMine: {
+    color: colors.textInverse,
+  },
+  contentOther: {
+    color: colors.text,
+  },
+  time: {
+    ...typography.caption,
+    marginTop: spacing.xs,
+  },
+  timeMine: {
+    color: "rgba(255,255,255,0.7)",
+    textAlign: "right",
+  },
+  timeOther: {
+    color: colors.textMuted,
+  },
+  composer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  input: {
+    flex: 1,
+    minHeight: 40,
+    maxHeight: 100,
+    backgroundColor: colors.bgInput,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    ...typography.body,
+    color: colors.text,
+  },
+  sendBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.full,
+    backgroundColor: colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sendBtnDisabled: {
+    opacity: 0.4,
   },
 });
